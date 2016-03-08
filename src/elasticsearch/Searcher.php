@@ -109,6 +109,7 @@ class Searcher{
 	**/
 	public static function _buildQuery($search, $facets = array()){
 		global $blog_id;
+		$simpleSearch = true;
 
 		$search = str_ireplace(array(' and ', ' or '), array(' AND ', ' OR '), $search);
 
@@ -142,9 +143,9 @@ class Searcher{
 
 		if(count($scored) > 0 && $search){
 			$qs = array(
-				'fields' => $scored,
 				'query' => $search
 			);
+			if(!$simpleSearch) { $qs['fields'] = $scored; }
 
 			$fuzzy = Config::option('fuzzy');
 
@@ -157,7 +158,7 @@ class Searcher{
 			$musts[] = array( 'query_string' => $qs );
 		}
 
-		if(in_array('post_type', $fields)){
+		if(!simpleSearch && in_array('post_type', $fields)){
 			self::_filterBySelectedFacets('post_type', $facets, 'term', $musts, $filters);
 		}
 
@@ -173,7 +174,7 @@ class Searcher{
 
 		$args = Config::apply_filters('searcher_query_pre_facet_filter', $args);
 
-		if(in_array('post_type', $fields)){
+		if(!simpleSearch && in_array('post_type', $fields)){
 			$args['facets']['post_type']['terms'] = array(
 				'field' => 'post_type',
 				'size' => Config::apply_filters('searcher_query_facet_size', 100)  // see https://github.com/elasticsearch/elasticsearch/issues/1832
@@ -181,28 +182,30 @@ class Searcher{
 		}
 
 		// return facets
-		foreach(Config::facets() as $facet){
-			$args['facets'][$facet]['terms'] = array(
-				'field' => $facet,
-				'size' => Config::apply_filters('searcher_query_facet_size', 100)  // see https://github.com/elasticsearch/elasticsearch/issues/1832
-			);
+		if(!simpleSearch) {
+			foreach(Config::facets() as $facet){
+				$args['facets'][$facet]['terms'] = array(
+					'field' => $facet,
+					'size' => Config::apply_filters('searcher_query_facet_size', 100)  // see https://github.com/elasticsearch/elasticsearch/issues/1832
+				);
 
-			$args['facets'][$facet]['facet_filter'] = array( 'bool' => array( 'must' => array(
-				array( 'term' => array( 'blog_id' => $blog_id ))
-			)));
+				$args['facets'][$facet]['facet_filter'] = array( 'bool' => array( 'must' => array(
+					array( 'term' => array( 'blog_id' => $blog_id ))
+				)));
 
-			if(count($filters) > 0){
-				$applicable = array();
+				if(count($filters) > 0){
+					$applicable = array();
 
-				foreach($filters as $filter){
-					if(isset($filter['term']) && !in_array($facet, array_keys($filter['term']))){
-						// do not filter on itself when using OR
-						$applicable[] = $filter;
+					foreach($filters as $filter){
+						if(isset($filter['term']) && !in_array($facet, array_keys($filter['term']))){
+							// do not filter on itself when using OR
+							$applicable[] = $filter;
+						}
 					}
-				}
 
-				if(count($applicable) > 0){
-					$args['facets'][$facet]['facet_filter']['bool']['should'] = $applicable;
+					if(count($applicable) > 0){
+						$args['facets'][$facet]['facet_filter']['bool']['should'] = $applicable;
+					}
 				}
 			}
 		}
