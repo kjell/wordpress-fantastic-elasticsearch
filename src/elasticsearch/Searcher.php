@@ -172,8 +172,19 @@ class Searcher{
 
 		$args['filter']['bool']['must'][] = array( 'term' => array( 'blog_id' => $blog_id ) );
 
-		$args = Config::apply_filters('searcher_query_pre_facet_filter', $args);
+		// Promote recent content
+		$args['query']['bool']['should'] = array(
+			'function_score' => array(
+				'gauss' => array(
+					'post_date' => array(
+						'scale' => '32w'
+					)
+				)
+			)
+		);
 
+		$args = Config::apply_filters('searcher_query_pre_facet_filter', $args);
+    
 		if(!simpleSearch && in_array('post_type', $fields)){
 			$args['facets']['post_type']['terms'] = array(
 				'field' => 'post_type',
